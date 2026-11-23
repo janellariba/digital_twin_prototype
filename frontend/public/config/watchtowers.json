@@ -4,6 +4,7 @@
   "towers": [
     {
       "id": "WT-01",
+<<<<<<< HEAD
       "name": "Poblacion National High School",
       "site": "Poblacion",
       "lat": 14.3690712,
@@ -28,6 +29,32 @@
       "lon": 121.0508991,
       "source": "REAL",
       "notes": "Waiting for surveyed coordinates of the school rooftop."
+=======
+      "name": "Tunasan",
+      "site": "Central Records Storage Office",
+      "lat": 14.3704244,
+      "lon": 121.0508991,
+      "source": "REAL",
+      "notes": "Google Maps place pin (place_id ChIJH_HkEgDRlzMRVo4Cds-90sg), retrieved 2026-11-23. Not surveyed: pin is about 20 m from the nearest building footprint in the twin. Replace with a GPS reading taken on the camera mount."
+    },
+    {
+      "id": "WT-02",
+      "name": "Poblacion",
+      "site": "Poblacion National High School",
+      "lat": 14.3690712,
+      "lon": 121.020407,
+      "source": "REAL",
+      "notes": "Google Maps place pin (place_id ChIJZwhb53LRlzMReaM8rIYCt_I), retrieved 2026-11-23. Not surveyed: pin falls inside a school building footprint in the twin. Replace with a GPS reading taken on the camera mount."
+    },
+    {
+      "id": "WT-03",
+      "name": "Putatan",
+      "site": "Lakeview Health Center",
+      "lat": 14.3948474,
+      "lon": 121.0360043,
+      "source": "REAL",
+      "notes": "Google Maps place pin (place_id ChIJa8pvJhPRlzMRd2Zf4aw9eQM), retrieved 2026-11-23. Not surveyed: pin is about 32 m from the nearest building footprint in the twin. Replace with a GPS reading taken on the camera mount."
+>>>>>>> 474cb7e6c568043b29ab1451eccab53bb73857fd
     }
   ]
 }
