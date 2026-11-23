@@ -1,0 +1,21 @@
+/* Tailwind v4 entry. Colours follow the digital twin's own dark palette. */
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0d1417;
+  --color-panel: #10191d;
+  --color-line: #24363c;
+  --color-ink: #e3ece9;
+  --color-muted: #8fa5a2;
+  --color-accent: #f2a33a;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  @apply bg-bg text-ink;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+}
