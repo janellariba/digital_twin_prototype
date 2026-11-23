@@ -42,6 +42,9 @@ REQUIRED = [
     "var br=class",                 # ShapeGeometry
     ",P=class",                     # Vector3
     ",Ge=2",                        # DoubleSide
+    ",gr=class",                    # Line
+    "var rs=class",                 # LineBasicMaterial
+    ",_e=class",                    # BufferGeometry
 ]
 # The bridge is inserted right after this statement (end of the twin's startup).
 ANCHOR = '_s("Ready",4);Kt("loading").remove();'

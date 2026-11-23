@@ -3814,7 +3814,8 @@ void main() {
     eh, nh = origin_utm           Un = DEM metadata  ih = fly-to
     Br, zr = raycaster + pointer  ms = terrain mesh  Fr = buildings mesh
     mn = Group, pe = Mesh, Sr = CylinderGeometry, xn = MeshBasicMaterial,
-    os = Shape, br = ShapeGeometry, P = Vector3, Ge = DoubleSide
+    os = Shape, br = ShapeGeometry, P = Vector3, Ge = DoubleSide,
+    gr = Line, rs = LineBasicMaterial, _e = BufferGeometry
 
   It adds a postMessage API for the React dashboard. It does not change any
   existing layer, control or the CSV camera loader. It only adds its own group.
@@ -3899,6 +3900,8 @@ void main() {
     // Markers grow when zoomed out so they stay visible at city scale.
     zoomRef: 1200, zoomMin: 1, zoomMax: 10,
     towerFlyDistance: 1800,
+    // Simulation drawing (display only).
+    sim: { truth: 0xff5a36, ray: 0xfb923c, estimate: 0xfacc15, ellipseOpacity: 0.22, dashOn: 120, dashOff: 70, rayLift: 12, flyDistance: 6000 },
   };
 
   const css = document.createElement("style");
@@ -3908,6 +3911,7 @@ void main() {
 .aisunog-tw span{display:block;font:500 11px/1.3 var(--body);color:#cfe0dc}
 .aisunog-tw i{display:inline-block;margin-top:3px;font:600 9.5px/1 var(--mono);font-style:normal;letter-spacing:.06em;padding:2px 6px;border-radius:99px;border:1px solid currentColor;text-shadow:none;background:rgba(13,20,23,.85)}
 .aisunog-tw.real i{color:#22d3ee}.aisunog-tw.synthetic i{color:#f0abfc}.aisunog-tw.pick i{color:#fff}
+.aisunog-tw.simfire i{color:#ff7a50}.aisunog-tw.estimate i{color:#facc15}
 .aisunog-tw.sel b{color:#22d3ee;text-decoration:underline;text-underline-offset:3px}`;
   document.head.appendChild(css);
 
@@ -4050,6 +4054,103 @@ void main() {
     layer.add(pickMarker.group);
   }
 
+  // ---- Simulation layer (ground truth, bearing lines, estimate, 95% ellipse) ----
+  const simLayer = new mn();
+  simLayer.name = "aisunog-simulation";
+  layer.add(simLayer);
+  let simMarkers = [];
+  function clearSimulation() {
+    for (const mk of simMarkers) removeMarker(mk);
+    simMarkers = [];
+    for (const c of [...simLayer.children]) { simLayer.remove(c); disposeTree(c); }
+  }
+  const toLocal = (ll) => {
+    if (!ll || !finite(ll.lat, ll.lon)) return null;
+    const [E, N] = a_(ll.lat, ll.lon);
+    return [E - eh, N - nh];
+  };
+  // Dashed line draped over the terrain: dashed = simulated, never a real camera.
+  function dashedRay(a, b, color) {
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const g = new mn();
+    if (!(len > 1) || len > 50000) return g;
+    const ux = (b[0] - a[0]) / len, uy = (b[1] - a[1]) / len;
+    const mat = new rs({ color, transparent: true, opacity: 0.95, depthTest: false });
+    const { dashOn, dashOff, rayLift } = STYLE.sim;
+    for (let s0 = 0; s0 < len; s0 += dashOn + dashOff) {
+      const s1 = Math.min(len, s0 + dashOn), pts = [];
+      for (let t = s0; ; t = Math.min(s1, t + 30)) {
+        const x = a[0] + ux * t, y = a[1] + uy * t;
+        pts.push(new P(...rn(x, y, Fi(x, y) + rayLift)));
+        if (t >= s1) break;
+      }
+      const line = new gr(new _e().setFromPoints(pts), mat);
+      line.renderOrder = 8;
+      g.add(line);
+    }
+    return g;
+  }
+  // 95% error ellipse, true size on the ground, in the twin's grid frame.
+  function ellipseMesh(c, el) {
+    const a = el.semi_major_m, b = el.semi_minor_m, phi = (el.orientation_deg * Math.PI) / 180;
+    const u = [Math.sin(phi), Math.cos(phi)], v = [Math.cos(phi), -Math.sin(phi)];
+    const shape = new os(), outline = [];
+    const z = Fi(c[0], c[1]) + 2;
+    for (let k = 0; k <= 72; k++) {
+      const th = (k / 72) * Math.PI * 2;
+      const x = a * Math.cos(th) * u[0] + b * Math.sin(th) * v[0];
+      const y = a * Math.cos(th) * u[1] + b * Math.sin(th) * v[1];
+      k ? shape.lineTo(x, y) : shape.moveTo(x, y);
+      outline.push(new P(...rn(c[0] + x, c[1] + y, z)));
+    }
+    const geo = new br(shape, 1);
+    geo.rotateX(-Math.PI / 2);
+    const fill = new pe(geo, new xn({ color: STYLE.sim.estimate, transparent: true, opacity: STYLE.sim.ellipseOpacity, depthTest: false, depthWrite: false, side: Ge }));
+    fill.position.set(...rn(c[0], c[1], z));
+    fill.renderOrder = 9;
+    const edge = new gr(new _e().setFromPoints(outline), new rs({ color: STYLE.sim.estimate, depthTest: false }));
+    edge.renderOrder = 9;
+    const g = new mn();
+    g.add(fill, edge);
+    return g;
+  }
+  function showSimulation(p) {
+    const truth = toLocal(p.truth);
+    if (!truth || !inExtent(...truth)) throw new Error("truth must be a lat/lon inside the twin");
+    const est = p.estimate ? toLocal(p.estimate) : null;
+    if (p.estimate && (!est || !inExtent(...est))) throw new Error("estimate must be a lat/lon inside the twin");
+    const el = p.ellipse;
+    if (el && !(finite(el.semi_major_m, el.semi_minor_m, el.orientation_deg) && el.semi_minor_m >= 0 && el.semi_major_m <= 50000)) {
+      throw new Error("invalid ellipse");
+    }
+    const rays = Array.isArray(p.rays) ? p.rays.slice(0, 20) : [];
+    clearSimulation();
+    let drawn = 0;
+    for (const r of rays) {
+      const a = toLocal(r?.from), b = toLocal(r?.to);
+      if (!a || !b) continue;
+      simLayer.add(dashedRay(a, b, STYLE.sim.ray));
+      drawn++;
+    }
+    if (est && el && el.semi_major_m >= 1) simLayer.add(ellipseMesh(est, el));
+    const fire = makeMarker({
+      e: truth[0], n: truth[1], color: STYLE.sim.truth, mastColor: STYLE.sim.truth, opacity: 1,
+      title: "SIM FIRE", sub: "Ground truth", badge: "SIMULATED", cls: "simfire", withMast: true,
+    });
+    simLayer.add(fire.group);
+    simMarkers.push(fire);
+    if (est) {
+      const errText = finite(p.estimate.error_m) ? `${Math.round(p.estimate.error_m)} m from truth` : "";
+      const mk = makeMarker({
+        e: est[0], n: est[1], color: STYLE.sim.estimate, mastColor: STYLE.sim.estimate, opacity: 1,
+        title: "ESTIMATE", sub: errText, badge: "SIMULATED", cls: "estimate", withMast: false,
+      });
+      simLayer.add(mk.group);
+      simMarkers.push(mk);
+    }
+    return { rays: drawn, estimate: !!est };
+  }
+
   // ---- Pointer handling ------------------------------------------------------
   let pickId = null;
   let down = null;
@@ -4111,6 +4212,13 @@ void main() {
       ih(e, n, d);
       send("view.flying", { lat, lon, distance_m: d }, id);
     },
+    "simulation.show": (p, id) => {
+      const r = showSimulation(p);
+      send("simulation.shown", r, id);
+      const t = toLocal(p.truth);
+      if (p.fly !== false) ih(t[0], t[1], STYLE.sim.flyDistance);
+    },
+    "simulation.clear": (p, id) => { clearSimulation(); send("simulation.cleared", {}, id); },
     "watchtowers.set": (p, id) => send("watchtowers.applied", setTowers(p.towers), id),
     "watchtowers.visible": (p, id) => {
       towerLayer.visible = p.visible !== false;

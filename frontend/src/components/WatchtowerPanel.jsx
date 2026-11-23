@@ -70,7 +70,7 @@ export default function WatchtowerPanel({ towers, errors, report, selectedId, vi
       )}
 
       <p className="mt-3 text-[11px] text-muted">
-        Edit <code className="font-mono">frontend/public/config/watchtowers.json</code>, then click Reload.
+        Edit <code className="font-mono">server/config/watchtowers.json</code>, then click Reload.
       </p>
     </section>
   );

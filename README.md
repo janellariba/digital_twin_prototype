@@ -16,7 +16,7 @@ dt-prototype/
     public/digital-twin/...offline.html              GENERATED copy (original + bridge)
     src/App.jsx                                      page layout
     src/components/DigitalTwin.jsx                   the iframe
-    public/config/watchtowers.json                   watchtower positions (you edit this)
+    (tower positions: server/config/watchtowers.json)
     src/components/WatchtowerPanel.jsx               tower list, source badges, focus
     src/components/MapTools.jsx                      pick a point + fly-to (collapsed)
     src/services/watchtowers.js                      loads and validates the tower file
@@ -73,7 +73,7 @@ All messages use `{ ns: "ai-sunog-twin", v: 1, type, id, payload }`. Both sides 
 
 ## Step 1b: Watchtower markers
 
-Tower positions come from **`frontend/public/config/watchtowers.json`**. The app reads it at runtime, so after editing the file you only click **Reload** in the Watchtowers panel (no rebuild).
+Tower positions come from **`server/config/watchtowers.json`** (moved there in Step 2; the server loads it into PostgreSQL). After editing the file, click **Reload** in the Watchtowers panel (no restart).
 
 ```json
 { "id": "WT-01", "name": "Tunasan", "site": "School name", "lat": 14.xxxxxx, "lon": 121.xxxxxx, "source": "REAL", "notes": "How it was measured" }
@@ -98,8 +98,89 @@ These are visual settings in `twin-bridge.js` (`STYLE`). None of them affect coo
 | Marker colours (cyan REAL, pink SYNTHETIC, white map tool) | `STYLE.tower`, `STYLE.pick` | Tell sources apart |
 | Marker size (mast 45 m, head 12 m, ring 14 to 20 m) and zoom scaling (1x to 10x) | `STYLE` | Keep markers visible at any zoom |
 | Fly-to distance for a selected tower (1800 m) | `STYLE.towerFlyDistance` | Camera framing |
-| Config path `config/watchtowers.json` | `src/services/watchtowers.js` | Override with `VITE_WATCHTOWERS_URL` |
+| Tower list endpoint `/api/watchtowers` | `src/services/watchtowers.js` | Served by the Step 2 server |
 
-## Next: Step 2 (simulated fire + triangulation)
+## Step 2: Fire simulation and triangulation (PostgreSQL)
 
-Tower positions will live in `central_server/config/watchtowers.yaml`. Each tower gets a real-coordinates slot (empty until you provide surveyed values) and a clearly labelled SYNTHETIC test position taken from the barangay label points in the twin. Real values always win when present.
+```
+React dashboard  --/api-->  FastAPI server  -->  PostgreSQL (aisunog_dt)
+  Simulation panel           server/app/         watchtowers, simulations,
+  twin draws the result      config/*.json       observations, triangulations
+```
+
+### One-time setup
+
+**1. Create the database** (pgAdmin Query Tool, or `psql -U postgres` in a terminal):
+
+```sql
+CREATE USER aisunog_dt WITH PASSWORD 'choose-a-password';
+CREATE DATABASE aisunog_dt OWNER aisunog_dt;
+```
+
+This makes a separate login and database just for the prototype, so it cannot touch your other databases. On Windows, `psql` is in `C:\Program Files\PostgreSQL\<version>\bin\`.
+
+**2. Set up Python** (from the `server` folder):
+
+```powershell
+cd server
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+copy .env.example .env
+```
+
+- `python -m venv .venv` creates an isolated Python environment for this project.
+- `.venv\Scripts\activate` switches the terminal to it (you will see `(.venv)`).
+- `pip install -r requirements.txt` installs FastAPI, SQLAlchemy, the PostgreSQL driver, pyproj and numpy.
+- `copy .env.example .env` creates your private settings file. Open `server/.env` and put your password in `DATABASE_URL`. `.env` is in `.gitignore`, so it is never pushed.
+
+### Run (two terminals)
+
+```powershell
+# Terminal 1: API server (tables are created automatically on first start)
+cd server
+.venv\Scripts\activate
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Terminal 2: dashboard
+cd frontend
+npm run dev
+```
+
+Check the server alone at http://127.0.0.1:8000/api/health (should say `"database": "postgresql"`). Interactive API docs: http://127.0.0.1:8000/docs.
+
+### Using the simulation
+
+1. **Pick on map** (or type lat/lon) to place the simulated fire. This is the **ground truth**.
+2. Set the bearing error with the slider. Optionally enter a seed to repeat a run exactly.
+3. **Run simulation.** Each tower within range gets the true bearing plus random error. The server triangulates and returns:
+   - the estimate (yellow ring) next to the truth (orange-red SIM FIRE), with the error in metres
+   - the 95% error ellipse (yellow area): the fire should fall inside it about 95% of the time
+   - dashed orange bearing lines (dashed = simulated, never a real camera)
+   - REJECTED with a reason when the geometry is not good enough (fewer than 2 bearings, lines nearly parallel, behind a tower, out of range)
+
+Everything is saved in PostgreSQL. History lists past runs; Reset deletes them all.
+
+### Tests
+
+```powershell
+cd server
+pytest                       # math tests (no database needed)
+```
+
+API tests need an **empty** test database (they delete simulations): create `aisunog_dt_test` the same way, then
+`set TEST_DATABASE_URL=postgresql+psycopg://aisunog_dt:PASSWORD@127.0.0.1:5432/aisunog_dt_test` and run `pytest` again.
+
+### Settings (no hidden values)
+
+| File | Contents |
+|---|---|
+| `server/config/watchtowers.json` | Tower positions (source of truth, synced into the database on start and on Reload) |
+| `server/config/simulation.json` | TEMPORARY approved values: noise default 1 deg (max 5), min ray angle 5 deg, max range 8000 m, plus a display-only line length factor. Re-read on every run, no restart needed. |
+| `server/.env` | Database URL (private) |
+
+Fixed in code: EPSG:32651 as the default metre grid (same as the twin; overridable with `CRS_EPSG`), the 95% chi-square constant 5.991 (statistics), and display-only styling in `twin-bridge.js` (`STYLE.sim`).
+
+## Next: Step 3 (cameras)
+
+Three USB webcams, each run by its own camera-node process, with YOLO detection and live feeds on the dashboard.
