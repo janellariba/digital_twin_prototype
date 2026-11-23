@@ -4,29 +4,29 @@
   "towers": [
     {
       "id": "WT-01",
-      "name": "Tunasan",
-      "site": null,
-      "lat": null,
-      "lon": null,
-      "source": "PENDING",
+      "name": "Poblacion National High School",
+      "site": "Poblacion",
+      "lat": 14.3690712,
+      "lon": 121.0204070,
+      "source": "REAL",
       "notes": "Waiting for surveyed coordinates of the school rooftop."
     },
     {
       "id": "WT-02",
-      "name": "Poblacion",
-      "site": null,
-      "lat": null,
-      "lon": null,
-      "source": "PENDING",
+      "name": "Putatan Elementary School",
+      "site": "Putatan",
+      "lat": 14.3948474,
+      "lon": 121.0360043,
+      "source": "REAL",
       "notes": "Waiting for surveyed coordinates of the school rooftop."
     },
     {
       "id": "WT-03",
-      "name": "Putatan",
-      "site": null,
-      "lat": null,
-      "lon": null,
-      "source": "PENDING",
+      "name": "Central Records Storage Office",
+      "site": "Tunasan",
+      "lat": 14.3704244,
+      "lon": 121.0508991,
+      "source": "REAL",
       "notes": "Waiting for surveyed coordinates of the school rooftop."
     }
   ]
