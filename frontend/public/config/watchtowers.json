@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "_help": "Watchtower positions for the dashboard. source: REAL (surveyed WGS84 coordinates), SYNTHETIC (temporary test value, must be replaced) or PENDING (no coordinates yet, not drawn). Edit this file, then click Reload in the Watchtowers panel.",
+  "_help": "Watchtower positions for the dashboard. source: REAL (real site coordinates), SYNTHETIC (temporary test value, must be replaced) or PENDING (no coordinates yet, not drawn). Edit this file, then click Reload in the Watchtowers panel.",
   "towers": [
     {
       "id": "WT-01",
