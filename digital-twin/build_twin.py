@@ -38,6 +38,10 @@ REQUIRED = [
     ",xn=class",                    # MeshBasicMaterial
     ",pe=class",                    # Mesh
     ",mn=class",                    # Group
+    "var os=class",                 # Shape (rings)
+    "var br=class",                 # ShapeGeometry
+    ",P=class",                     # Vector3
+    ",Ge=2",                        # DoubleSide
 ]
 # The bridge is inserted right after this statement (end of the twin's startup).
 ANCHOR = '_s("Ready",4);Kt("loading").remove();'

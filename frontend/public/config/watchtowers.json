@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "_help": "Watchtower positions for the dashboard. source: REAL (surveyed WGS84 coordinates), SYNTHETIC (temporary test value, must be replaced) or PENDING (no coordinates yet, not drawn). Edit this file, then click Reload in the Watchtowers panel.",
+  "towers": [
+    {
+      "id": "WT-01",
+      "name": "Tunasan",
+      "site": null,
+      "lat": null,
+      "lon": null,
+      "source": "PENDING",
+      "notes": "Waiting for surveyed coordinates of the school rooftop."
+    },
+    {
+      "id": "WT-02",
+      "name": "Poblacion",
+      "site": null,
+      "lat": null,
+      "lon": null,
+      "source": "PENDING",
+      "notes": "Waiting for surveyed coordinates of the school rooftop."
+    },
+    {
+      "id": "WT-03",
+      "name": "Putatan",
+      "site": null,
+      "lat": null,
+      "lon": null,
+      "source": "PENDING",
+      "notes": "Waiting for surveyed coordinates of the school rooftop."
+    }
+  ]
+}

@@ -21,6 +21,8 @@ export function useTwinBridge(iframeRef) {
   const [picking, setPicking] = useState(false);
   const [lastPick, setLastPick] = useState(null);
   const [lastError, setLastError] = useState(null);
+  const [towerReport, setTowerReport] = useState(null); // { drawn, pending, rejected[] }
+  const [selectedTowerId, setSelectedTowerId] = useState(null);
   const [log, setLog] = useState([]);
   const readyRef = useRef(false);
   const queue = useRef([]); // commands sent before the twin was ready
@@ -39,6 +41,7 @@ export function useTwinBridge(iframeRef) {
   // Public: send a command. Queued until the twin says it is ready.
   const send = useCallback((type, payload = {}) => {
     const msg = { ns: NS, v: VERSION, type, id: makeId(), payload };
+    if (type === "watchtowers.set") setTowerReport(null); // stale until the twin answers
     if (!readyRef.current) {
       queue.current.push(msg);
       addLog("queued", type, payload);
@@ -82,6 +85,19 @@ export function useTwinBridge(iframeRef) {
         case "pick.cancelled":
           setPicking(false);
           break;
+        case "watchtowers.applied":
+          setTowerReport({
+            drawn: isNum(p.drawn) ? p.drawn : 0,
+            pending: isNum(p.pending) ? p.pending : 0,
+            rejected: Array.isArray(p.rejected)
+              ? p.rejected.slice(0, 50).map((r) => ({ id: String(r?.id ?? ""), reason: String(r?.reason ?? "") }))
+              : [],
+          });
+          setSelectedTowerId(null);
+          break;
+        case "watchtower.selected":
+          setSelectedTowerId(typeof p.id === "string" ? p.id : null);
+          break;
         case "error":
           setLastError(String(p.message ?? "Unknown error").slice(0, 200));
           break;
@@ -103,5 +119,6 @@ export function useTwinBridge(iframeRef) {
     };
   }, [iframeRef, addLog, postRaw]);
 
-  return { ready, info, picking, lastPick, lastError, log, send, clearError: () => setLastError(null) };
+  const clearError = useCallback(() => setLastError(null), []);
+  return { ready, info, picking, lastPick, lastError, log, send, clearError, towerReport, selectedTowerId };
 }

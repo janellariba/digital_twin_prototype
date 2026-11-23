@@ -3813,7 +3813,8 @@ void main() {
     rn  = (E, N, h) -> [x, y, z]  Fi = DEM height    a_ = lat/lon -> UTM 51N
     eh, nh = origin_utm           Un = DEM metadata  ih = fly-to
     Br, zr = raycaster + pointer  ms = terrain mesh  Fr = buildings mesh
-    mn = Group, pe = Mesh, Sr = CylinderGeometry, xn = MeshBasicMaterial
+    mn = Group, pe = Mesh, Sr = CylinderGeometry, xn = MeshBasicMaterial,
+    os = Shape, br = ShapeGeometry, P = Vector3, Ge = DoubleSide
 
   It adds a postMessage API for the React dashboard. It does not change any
   existing layer, control or the CSV camera loader. It only adds its own group.
@@ -3881,30 +3882,175 @@ void main() {
     extent_local: EXT,
   });
 
+
+  // -------------------------------------------------------------------------
+  // DISPLAY STYLE. Visual constants only: marker sizes (metres at close zoom),
+  // colours and zoom scaling. None of these affect coordinates or any
+  // calculation. Tower positions always come from the dashboard's config.
+  // -------------------------------------------------------------------------
+  const STYLE = {
+    tower: {
+      REAL: { head: 0x22d3ee, mast: 0xe8f4f6, ring: 0x22d3ee, opacity: 1 },
+      SYNTHETIC: { head: 0xf0abfc, mast: 0xe2e8f0, ring: 0xf0abfc, opacity: 0.9 },
+    },
+    pick: 0xffffff,
+    mastH: 45, mastR: 3, headH: 10, headR: 12, ringIn: 14, ringOut: 20,
+    labelLift: 14,
+    // Markers grow when zoomed out so they stay visible at city scale.
+    zoomRef: 1200, zoomMin: 1, zoomMax: 10,
+    towerFlyDistance: 1800,
+  };
+
+  const css = document.createElement("style");
+  css.textContent = `
+.aisunog-tw{position:fixed;transform:translate(-50%,-100%);pointer-events:none;text-align:center;white-space:nowrap;text-shadow:0 1px 3px #000,0 0 8px #000}
+.aisunog-tw b{display:block;font:700 15px/1 var(--display);letter-spacing:.06em;color:#fff}
+.aisunog-tw span{display:block;font:500 11px/1.3 var(--body);color:#cfe0dc}
+.aisunog-tw i{display:inline-block;margin-top:3px;font:600 9.5px/1 var(--mono);font-style:normal;letter-spacing:.06em;padding:2px 6px;border-radius:99px;border:1px solid currentColor;text-shadow:none;background:rgba(13,20,23,.85)}
+.aisunog-tw.real i{color:#22d3ee}.aisunog-tw.synthetic i{color:#f0abfc}.aisunog-tw.pick i{color:#fff}
+.aisunog-tw.sel b{color:#22d3ee;text-decoration:underline;text-underline-offset:3px}`;
+  document.head.appendChild(css);
+
   // Bridge layer: everything the bridge draws lives here, separate from the
-  // twin's own layers.
+  // twin's own layers (terrain, buildings, roads, barangays, CSV cameras).
   const layer = new mn();
   layer.name = "aisunog-bridge";
   Be.add(layer);
+  const towerLayer = new mn();
+  towerLayer.name = "aisunog-watchtowers";
+  layer.add(towerLayer);
 
-  // Pick marker: a magenta pin. Size is display only.
-  let pin = null;
-  function clearPin() {
-    if (!pin) return;
-    layer.remove(pin);
-    pin.geometry.dispose();
-    pin.material.dispose();
-    pin = null;
+  const disposeTree = (obj) => obj.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
+
+  // Flat ring lying on the ground. Drawn on top of everything so the exact
+  // location is never hidden behind buildings.
+  function ringMesh(color, opacity) {
+    const s = new os();
+    s.absarc(0, 0, STYLE.ringOut, 0, Math.PI * 2, false);
+    const hole = new os();
+    hole.absarc(0, 0, STYLE.ringIn, 0, Math.PI * 2, true);
+    s.holes.push(hole);
+    const g = new br(s, 48);
+    g.rotateX(-Math.PI / 2);
+    const m = new pe(g, new xn({ color, transparent: true, opacity, depthTest: false, depthWrite: false, side: Ge }));
+    m.renderOrder = 10;
+    return m;
   }
-  function setPin(e, n, baseElev) {
+
+  // A marker = ground ring (exact spot) + optional mast and hexagonal head + HTML label.
+  const markers = new Set();
+  function makeMarker({ e, n, color, mastColor, opacity, title, sub, badge, cls, withMast }) {
+    const group = new mn();
+    const ground = Fi(e, n);
+    group.position.set(...rn(e, n, ground));
+    group.add(ringMesh(color, Math.min(1, opacity + 0.25)));
+    let top = 0;
+    if (withMast) {
+      const mat = (c) => new xn({ color: c, transparent: opacity < 1, opacity });
+      const mast = new pe(new Sr(STYLE.mastR, STYLE.mastR, STYLE.mastH, 8), mat(mastColor));
+      mast.position.y = STYLE.mastH / 2;
+      const head = new pe(new Sr(STYLE.headR, STYLE.headR, STYLE.headH, 6), mat(color));
+      head.position.y = STYLE.mastH + STYLE.headH / 2;
+      group.add(mast, head);
+      top = STYLE.mastH + STYLE.headH;
+    }
+    // Label built with textContent only (never innerHTML) so config text cannot inject HTML.
+    const el = document.createElement("div");
+    el.className = "aisunog-tw " + cls;
+    const b = document.createElement("b"); b.textContent = title; el.appendChild(b);
+    if (sub) { const s = document.createElement("span"); s.textContent = sub; el.appendChild(s); }
+    if (badge) { const i = document.createElement("i"); i.textContent = badge; el.appendChild(i); }
+    document.body.appendChild(el);
+    const mk = { group, el, top, e, n };
+    markers.add(mk);
+    return mk;
+  }
+  function removeMarker(mk) {
+    mk.group.parent?.remove(mk.group);
+    disposeTree(mk.group);
+    mk.el.remove();
+    markers.delete(mk);
+  }
+  const shown = (o) => { for (let x = o; x; x = x.parent) if (!x.visible) return false; return true; };
+
+  // Keep marker size and label positions in step with the camera.
+  const tmp = new P();
+  function frame() {
+    for (const mk of markers) {
+      const s = Math.min(STYLE.zoomMax, Math.max(STYLE.zoomMin, sn.position.distanceTo(mk.group.position) / STYLE.zoomRef));
+      mk.group.scale.setScalar(s);
+      tmp.copy(mk.group.position);
+      tmp.y += (mk.top + STYLE.labelLift) * s;
+      tmp.project(sn);
+      const off = !shown(mk.group) || tmp.z > 1 || Math.abs(tmp.x) > 1.1 || Math.abs(tmp.y) > 1.1;
+      mk.el.style.display = off ? "none" : "block";
+      if (!off) {
+        mk.el.style.left = ((tmp.x + 1) / 2) * innerWidth + "px";
+        mk.el.style.top = ((1 - tmp.y) / 2) * innerHeight + "px";
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ---- Watchtowers ---------------------------------------------------------
+  const towers = new Map(); // id -> marker
+  let selectedId = null;
+  const ID_RE = /^[A-Za-z0-9_-]{1,16}$/;
+
+  function clearTowers() {
+    for (const mk of towers.values()) removeMarker(mk);
+    towers.clear();
+    selectedId = null;
+  }
+  function setTowers(list) {
+    if (!Array.isArray(list)) throw new Error("payload.towers must be an array");
+    clearTowers();
+    const rejected = [];
+    let pending = 0;
+    for (const t of list.slice(0, 50)) {
+      const id = t && typeof t.id === "string" && ID_RE.test(t.id) ? t.id : null;
+      if (!id) { rejected.push({ id: String(t?.id ?? "").slice(0, 16), reason: "invalid id" }); continue; }
+      if (towers.has(id)) { rejected.push({ id, reason: "duplicate id" }); continue; }
+      if (t.source === "PENDING") { pending++; continue; } // no position yet: nothing to draw
+      const st = Object.hasOwn(STYLE.tower, t.source) ? STYLE.tower[t.source] : null;
+      if (!st) { rejected.push({ id, reason: "source must be REAL, SYNTHETIC or PENDING" }); continue; }
+      if (!finite(t.lat, t.lon)) { rejected.push({ id, reason: "lat and lon must be numbers" }); continue; }
+      const [E, N] = a_(t.lat, t.lon);
+      const e = E - eh, n = N - nh;
+      if (!inExtent(e, n)) { rejected.push({ id, reason: "outside the digital twin extent" }); continue; }
+      const mk = makeMarker({
+        e, n, color: st.head, mastColor: st.mast, opacity: st.opacity,
+        title: id, sub: typeof t.name === "string" ? t.name.slice(0, 60) : "",
+        badge: t.source, cls: t.source.toLowerCase(), withMast: true,
+      });
+      mk.group.traverse((o) => { o.userData.towerId = id; });
+      towerLayer.add(mk.group);
+      towers.set(id, mk);
+    }
+    return { drawn: towers.size, pending, rejected };
+  }
+  function selectTower(id) {
+    const prev = selectedId && towers.get(selectedId);
+    if (prev) { prev.el.classList.remove("sel"); prev.group.children[0].scale.setScalar(1); }
+    selectedId = towers.has(id) ? id : null;
+    const cur = selectedId && towers.get(selectedId);
+    if (cur) { cur.el.classList.add("sel"); cur.group.children[0].scale.setScalar(1.5); }
+  }
+
+  // ---- Pick tool (a flat white ring, clearly not a tower) ----------------------
+  let pickMarker = null;
+  function clearPin() { if (pickMarker) { removeMarker(pickMarker); pickMarker = null; } }
+  function setPin(e, n) {
     clearPin();
-    const h = 200; // display size only
-    pin = new pe(new Sr(15, 15, h, 16), new xn({ color: 0xff3df2 }));
-    pin.position.set(...rn(e, n, baseElev + h / 2));
-    layer.add(pin);
+    pickMarker = makeMarker({
+      e, n, color: STYLE.pick, mastColor: STYLE.pick, opacity: 0.75,
+      title: "PICKED POINT", sub: "", badge: "MAP TOOL", cls: "pick", withMast: false,
+    });
+    layer.add(pickMarker.group);
   }
 
-  // Click-to-pick. Armed by "pick.start", answered once with "pick.result".
+  // ---- Pointer handling ------------------------------------------------------
   let pickId = null;
   let down = null;
   const canvas = an.domElement;
@@ -3913,10 +4059,20 @@ void main() {
   canvas.addEventListener("pointerdown", (ev) => { down = [ev.clientX, ev.clientY]; });
   canvas.addEventListener("pointerup", (ev) => {
     // Ignore drags (camera moves), same 4 px rule the twin uses.
-    if (pickId === null || !down || Math.hypot(ev.clientX - down[0], ev.clientY - down[1]) > 4) return;
+    if (!down || Math.hypot(ev.clientX - down[0], ev.clientY - down[1]) > 4) return;
     const r = canvas.getBoundingClientRect();
     zr.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
     Br.setFromCamera(zr, sn);
+
+    if (pickId === null) {
+      // Not picking: a click on a tower selects it.
+      if (!shown(towerLayer)) return;
+      const hitT = Br.intersectObjects(towerLayer.children, true)[0];
+      const tid = hitT?.object.userData.towerId;
+      if (tid) { selectTower(tid); send("watchtower.selected", { id: tid, source: "map" }); }
+      return;
+    }
+
     const targets = [Fr, ms].filter((o) => o && o.visible);
     const hit = Br.intersectObjects(targets, false)[0];
     const id = pickId;
@@ -3924,7 +4080,7 @@ void main() {
     const e = hit.point.x, n = -hit.point.z, elev = hit.point.y;
     if (!inExtent(e, n)) return send("pick.miss", { reason: "Outside the digital twin extent." }, id);
     const [lat, lon] = utmToLatLon(e + eh, n + nh);
-    setPin(e, n, elev);
+    setPin(e, n);
     disarm();
     send("pick.result", {
       lat, lon,
@@ -3954,6 +4110,19 @@ void main() {
       if (!inExtent(e, n)) return fail("That point is outside the digital twin extent", id);
       ih(e, n, d);
       send("view.flying", { lat, lon, distance_m: d }, id);
+    },
+    "watchtowers.set": (p, id) => send("watchtowers.applied", setTowers(p.towers), id),
+    "watchtowers.visible": (p, id) => {
+      towerLayer.visible = p.visible !== false;
+      send("watchtowers.visibility", { visible: towerLayer.visible }, id);
+    },
+    "watchtower.select": (p, id) => {
+      const tid = typeof p.id === "string" ? p.id : "";
+      if (!towers.has(tid)) return fail(`Watchtower not on the map: ${tid.slice(0, 16)}`, id);
+      selectTower(tid);
+      const mk = towers.get(tid);
+      if (p.fly !== false) ih(mk.e, mk.n, STYLE.towerFlyDistance);
+      send("watchtower.selected", { id: tid, source: "dashboard" }, id);
     },
   };
 
