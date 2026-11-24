@@ -5,3 +5,10 @@ __pycache__/
 .env
 .venv/
 frontend/package-lock.json
+
+# Model weights and runtime data
+*.pt
+*.engine
+*.onnx
+server/storage/
+camera_node/captures/

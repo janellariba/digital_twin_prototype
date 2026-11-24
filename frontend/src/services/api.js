@@ -12,6 +12,9 @@ async function request(method, path, body) {
     throw new Error("Cannot reach the server. Is it running? (uvicorn app.main:app --port 8000)");
   }
   if (res.status === 204) return null;
+  if (res.status === 502 || res.status === 504) {
+    throw new Error("Server not running. Start it: cd server, then uvicorn app.main:app --host 127.0.0.1 --port 8000");
+  }
   let data = null;
   try { data = await res.json(); } catch { /* non-JSON error page */ }
   if (!res.ok) {

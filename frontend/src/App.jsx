@@ -7,7 +7,17 @@ import MapTools from "./components/MapTools.jsx";
 import MessageLog from "./components/MessageLog.jsx";
 import { useTwinBridge } from "./services/useTwinBridge.js";
 import SimulationPanel from "./components/SimulationPanel.jsx";
+import CameraGrid from "./components/CameraGrid.jsx";
+import DetectionPanel from "./components/DetectionPanel.jsx";
+import { api } from "./services/api.js";
+import { usePolling } from "./services/usePolling.js";
 import { loadWatchtowers, reloadWatchtowers } from "./services/watchtowers.js";
+
+// Display refresh rates (dashboard only; do not affect detection).
+const CAMERA_POLL_MS = 1000;
+const DETECTION_POLL_MS = 2000;
+const fetchCameras = () => api.get("/api/cameras");
+const fetchDetections = () => api.get("/api/detections?limit=15");
 
 // Only what the map needs to draw a simulation.
 function toTwinSimulation(sim) {
@@ -34,6 +44,10 @@ export default function App() {
   const [towerErrors, setTowerErrors] = useState([]);
   const [loading, setLoading] = useState(false);
   const [towersVisible, setTowersVisible] = useState(true);
+  const [cameras, cameraError] = usePolling(fetchCameras, CAMERA_POLL_MS, []);
+  const [detections, detectionError] = usePolling(fetchDetections, DETECTION_POLL_MS, []);
+  const online = cameras.filter((c) => c.state === "ONLINE").length;
+  const detectingCount = cameras.filter((c) => c.detecting).length;
 
   const reload = useCallback(async (fromFile = false) => {
     setLoading(true);
@@ -64,9 +78,15 @@ export default function App() {
           <h1 className="text-lg font-semibold uppercase tracking-wide">
             AI-SUNOG <span className="text-accent">Monitoring Prototype</span>
           </h1>
-          <p className="text-xs text-muted">Digital twin, watchtowers and fire simulation</p>
+          <p className="text-xs text-muted">Cameras, AI detection, digital twin and fire simulation</p>
         </div>
         <div className="flex items-center gap-3 font-mono text-xs">
+          <span className={`rounded-full border px-3 py-1 ${detectingCount ? "animate-pulse border-red-500 text-red-300" : "border-line text-muted"}`}>
+            {detectingCount ? `FIRE/SMOKE: ${detectingCount} camera(s)` : "No detections"}
+          </span>
+          <span className="rounded-full border border-line px-3 py-1 text-muted">
+            Cameras online: {online} / {cameras.length}
+          </span>
           <span className="rounded-full border border-line px-3 py-1 text-muted">
             Towers on map: {towerReport ? towerReport.drawn : "-"} / {towers.length}
           </span>
@@ -77,8 +97,11 @@ export default function App() {
       </header>
 
       <main className="flex min-h-0 flex-1 gap-4 p-4">
-        <div className="min-w-0 flex-1">
-          <DigitalTwin iframeRef={iframeRef} ready={ready} />
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          <CameraGrid cameras={cameras} error={cameraError} />
+          <div className="min-h-[360px] flex-1">
+            <DigitalTwin iframeRef={iframeRef} ready={ready} />
+          </div>
         </div>
         <aside className="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto">
           <WatchtowerPanel
@@ -92,6 +115,7 @@ export default function App() {
             onSelect={(id) => send("watchtower.select", { id })}
             onToggle={(v) => { setTowersVisible(v); send("watchtowers.visible", { visible: v }); }}
           />
+          <DetectionPanel detections={detections} error={detectionError} />
           <SimulationPanel
             bridge={bridge}
             onShow={(sim) => send("simulation.show", toTwinSimulation(sim))}

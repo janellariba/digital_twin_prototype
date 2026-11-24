@@ -124,13 +124,13 @@ This makes a separate login and database just for the prototype, so it cannot to
 ```powershell
 cd server
 python -m venv .venv
-.venv\Scripts\activate
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 copy .env.example .env
 ```
 
 - `python -m venv .venv` creates an isolated Python environment for this project.
-- `.venv\Scripts\activate` switches the terminal to it (you will see `(.venv)`).
+- `.\.venv\Scripts\Activate.ps1` switches the terminal to it (you will see `(.venv)`). If Windows says scripts are disabled, first run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`.
 - `pip install -r requirements.txt` installs FastAPI, SQLAlchemy, the PostgreSQL driver, pyproj and numpy.
 - `copy .env.example .env` creates your private settings file. Open `server/.env` and put your password in `DATABASE_URL`. `.env` is in `.gitignore`, so it is never pushed.
 
@@ -139,7 +139,7 @@ copy .env.example .env
 ```powershell
 # Terminal 1: API server (tables are created automatically on first start)
 cd server
-.venv\Scripts\activate
+.\.venv\Scripts\Activate.ps1
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 # Terminal 2: dashboard
@@ -181,6 +181,79 @@ API tests need an **empty** test database (they delete simulations): create `ais
 
 Fixed in code: EPSG:32651 as the default metre grid (same as the twin; overridable with `CRS_EPSG`), the 95% chi-square constant 5.991 (statistics), and display-only styling in `twin-bridge.js` (`STYLE.sim`).
 
-## Next: Step 3 (cameras)
+## Step 3A: Cameras and AI detection
 
-Three USB webcams, each run by its own camera-node process, with YOLO detection and live feeds on the dashboard.
+```
+camera_node (LAB-A)  --+                           +--> dashboard: live feeds, status,
+camera_node (LAB-B)  --+--HTTP + node key--> server|    detection list with snapshots
+camera_node (LAB-C)  --+                           +--> PostgreSQL: cameras, detections
+ (3 separate programs: webcam -> YOLO -> send)          (snapshots saved in server/storage/)
+```
+
+Each camera runs as its **own program**. If one webcam is unplugged or crashes, the others keep running. The same code will run on a Jetson later; only the config file changes.
+
+### One-time setup
+
+**1. Shared node key.** Make a random key:
+
+```powershell
+python -c "import secrets; print(secrets.token_hex(16))"
+```
+
+Put it in `server/.env` as `NODE_API_KEY=...` and restart the server. Then create `camera_node/.env` with the **same** line. The server refuses detections from anything without this key.
+
+**2. Python environment for the camera nodes** (from the `camera_node` folder):
+
+```powershell
+cd camera_node
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+pip install -r requirements.txt
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+```
+
+- The `torch` line installs PyTorch **with GPU (CUDA 12.8) support**. RTX 50-series GPUs need CUDA 12.8 or newer. A plain `pip install torch` on Windows gives a CPU-only version.
+- The last line must print `True` and your GPU name. If it prints `False`, YOLO will run on the CPU (slow).
+
+**3. Model.** Copy your `best.pt` into `camera_node/models/`. Model files are never committed (`.gitignore`).
+
+**4. Find which webcam is which.** Plug in all three webcams, then:
+
+```powershell
+python tools/list_cameras.py
+```
+
+It saves one snapshot per webcam in `camera_node/captures/`. Open them to see which index is which physical webcam (index 0 is usually the laptop's own camera). Put the right index in `source.device_index` of `config/LAB-A.json`, `LAB-B.json` and `LAB-C.json`. The nodes refuse to start until this is set, on purpose.
+
+### Run
+
+Start the server and dashboard as before, then the three cameras:
+
+```powershell
+cd camera_node
+.\start_lab_nodes.ps1
+```
+
+This opens three windows, one per camera. Or start one camera by hand:
+`python -m node --config config/LAB-A.json`.
+
+On the dashboard: each camera shows **ONLINE**, **OFFLINE** (no heartbeat for 6 s), **ERROR** (camera can't be opened) or **DETECTING** (fire/smoke in the last 5 s). Detections appear in **AI detections** with a snapshot, and are saved in PostgreSQL.
+
+**Testing tip:** your model labels small or synthetic flames as *smoke* (it was trained on wildfire and structure-fire images). Show real fire footage on a phone or monitor in front of the webcam.
+
+### Settings (pending your approval)
+
+| File | Values |
+|---|---|
+| `camera_node/config/detection.json` | confidence threshold 0.5, YOLO 5 runs/s per camera, preview 2 images/s at 640 px, one event per 2 s while fire stays visible, heartbeat every 2 s |
+| `camera_node/config/LAB-*.json` | webcam index (you set it), 640x480 MJPG, DirectShow |
+| `server/config/monitoring.json` | OFFLINE after 6 s without heartbeat, DETECTING window 5 s, snapshot max 2 MB |
+
+### Tests
+
+`server/tests/test_cameras.py` (needs `TEST_DATABASE_URL`): node key required, ONLINE/ERROR status, detection saved once even if resent, simulated events refused on the camera endpoint, bad images refused.
+
+## Next: Step 3B (lab triangulation)
+
+Measure the webcam positions and directions in the room, convert each detection's position in the image into a bearing, and triangulate the fire screen's position.

@@ -1,0 +1,25 @@
+{
+  "_status": "TEMPORARY prototype values, proposed 2026-11-24 and pending your approval. Shared by all camera nodes.",
+  "model_path": "models/best.pt",
+  "device": "auto",
+  "conf_threshold": 0.5,
+  "imgsz": null,
+  "inference_fps": 5,
+  "preview_fps": 2,
+  "preview_width": 640,
+  "jpeg_quality": 70,
+  "event_min_interval_s": 2.0,
+  "heartbeat_interval_s": 2.0,
+  "_notes": {
+    "model_path": "Relative to the camera_node folder. Your YOLOv8s-seg model (classes: fire, smoke).",
+    "device": "auto = GPU if PyTorch sees one, otherwise CPU. Or set cuda:0 / cpu.",
+    "conf_threshold": "Detections below this confidence are ignored. Tune using your validation results.",
+    "imgsz": "null = use the size the model was trained with (640 for best.pt).",
+    "inference_fps": "Maximum YOLO runs per second per camera (limits GPU load with 3 cameras).",
+    "preview_fps": "Live preview images sent to the dashboard per second.",
+    "preview_width": "Preview image width in pixels (smaller = less network).",
+    "jpeg_quality": "Preview and snapshot JPEG quality (0 to 100).",
+    "event_min_interval_s": "While fire stays visible, send at most one detection event per this many seconds.",
+    "heartbeat_interval_s": "How often the node tells the server it is alive."
+  }
+}

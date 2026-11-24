@@ -1,0 +1,21 @@
+{
+  "camera_id": "LAB-C",
+  "label": "Lab camera C",
+  "site": "lab",
+  "server_url": "http://127.0.0.1:8000",
+  "detection_config": "detection.json",
+  "source": {
+    "type": "usb",
+    "device_index": null,
+    "backend": "dshow",
+    "width": 640,
+    "height": 480,
+    "fourcc": "MJPG"
+  },
+  "_notes": {
+    "device_index": "REQUIRED. Run tools/list_cameras.py and set the index of the webcam you want for this node. Not guessed on purpose.",
+    "backend": "dshow (DirectShow) is the most reliable with several webcams on Windows. Use msmf to try Media Foundation, or v4l2 on Linux/Jetson.",
+    "width/height/fourcc": "640x480 MJPG keeps three USB webcams within USB bandwidth.",
+    "source.type": "usb now; file (a video, for testing) is also supported; rtsp later for Hikvision."
+  }
+}

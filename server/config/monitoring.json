@@ -1,0 +1,11 @@
+{
+  "_status": "TEMPORARY prototype values, proposed 2026-11-24 and pending your approval.",
+  "offline_after_s": 6,
+  "detecting_window_s": 5,
+  "max_snapshot_bytes": 2000000,
+  "_notes": {
+    "offline_after_s": "A camera is shown OFFLINE if no heartbeat arrived for this long (nodes send one every 2 s).",
+    "detecting_window_s": "A camera is shown DETECTING if it sent a detection within this many seconds.",
+    "max_snapshot_bytes": "Largest snapshot image the server accepts per detection (2 MB)."
+  }
+}

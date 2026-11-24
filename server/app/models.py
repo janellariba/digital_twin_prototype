@@ -92,3 +92,42 @@ class Triangulation(Base):
     residual_rms_deg: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     simulation: Mapped[Simulation] = relationship(back_populates="triangulation")
+
+
+class Camera(Base):
+    """A camera node (one per webcam now, one per Jetson later). Created when the node registers."""
+    __tablename__ = "cameras"
+    id: Mapped[str] = mapped_column(String(16), primary_key=True)
+    node_id: Mapped[str] = mapped_column(String(40), default="")  # host name of the machine running it
+    label: Mapped[str] = mapped_column(String(60), default="")
+    site: Mapped[str] = mapped_column(String(20), default="")  # "lab" for the webcam test
+    source: Mapped[str] = mapped_column(String(120), default="")
+    source_type: Mapped[str] = mapped_column(String(10), default="")  # usb | file | rtsp
+    model_name: Mapped[str] = mapped_column(String(120), default="")
+    classes: Mapped[list] = mapped_column(JSON, default=list)
+    device: Mapped[str] = mapped_column(String(20), default="")
+    software_version: Mapped[str] = mapped_column(String(20), default="")
+    registered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_status: Mapped[dict] = mapped_column(JSON, default=dict)  # latest heartbeat body
+    last_detection_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Detection(Base):
+    """One detection event from a camera node: every box YOLO found in one frame."""
+    __tablename__ = "detections"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(String(36), unique=True, index=True)  # makes resends safe
+    camera_id: Mapped[str] = mapped_column(String(16), index=True)
+    source_type: Mapped[str] = mapped_column(String(12))  # "ai" (never "simulated" here)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # camera node clock
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)  # server clock
+    frame_width: Mapped[int] = mapped_column(Integer)
+    frame_height: Mapped[int] = mapped_column(Integer)
+    model_name: Mapped[str] = mapped_column(String(120), default="")
+    conf_threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pan_deg: Mapped[float | None] = mapped_column(Float, nullable=True)  # PTZ pan at capture; null for fixed webcams
+    classes: Mapped[str] = mapped_column(String(60), default="")  # e.g. "fire,smoke"
+    max_confidence: Mapped[float] = mapped_column(Float)
+    boxes: Mapped[list] = mapped_column(JSON)
+    snapshot_path: Mapped[str | None] = mapped_column(String(200), nullable=True)

@@ -13,7 +13,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from . import db as dbmod
-from . import settings, simulation, watchtowers
+from . import cameras, settings, simulation, watchtowers
 from .models import Simulation, Watchtower
 
 log = logging.getLogger("aisunog")
@@ -25,6 +25,8 @@ _last_tower_errors: list[str] = []
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     dbmod.init_engine()
+    if not settings.NODE_API_KEY or settings.NODE_API_KEY == "CHANGE_ME":
+        log.warning("NODE_API_KEY is not set in server/.env: camera nodes will be refused until it is.")
     with dbmod.SessionLocal() as s:
         _sync_towers(s)
     yield
@@ -38,7 +40,14 @@ def _sync_towers(s: Session):
     log.info("Watchtowers synced from %s", settings.WATCHTOWERS_FILE)
 
 
-app = FastAPI(title="AI-SUNOG Digital Twin Prototype API", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="AI-SUNOG Digital Twin Prototype API", version="0.3.0", lifespan=lifespan)
+app.include_router(cameras.router)
+
+
+@app.get("/")
+def root():
+    """Nothing to show at /. The API lives under /api; try /docs."""
+    return {"service": "AI-SUNOG prototype API", "docs": "/docs", "health": "/api/health"}
 
 
 def _cfg():

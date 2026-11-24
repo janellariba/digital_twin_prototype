@@ -20,6 +20,11 @@ def _path(env_name: str, default: str) -> Path:
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 WATCHTOWERS_FILE = _path("WATCHTOWERS_FILE", "config/watchtowers.json")
 SIMULATION_FILE = _path("SIMULATION_FILE", "config/simulation.json")
+MONITORING_FILE = _path("MONITORING_FILE", "config/monitoring.json")
+# Detection snapshots are saved here (not committed to Git).
+STORAGE_DIR = _path("STORAGE_DIR", "storage")
+# Shared secret that camera nodes send in the X-Node-Key header.
+NODE_API_KEY = os.environ.get("NODE_API_KEY", "")
 # Projected CRS used for all metre calculations. 32651 = WGS84 / UTM zone 51N,
 # the same CRS as the digital twin (its terrain.json says EPSG:32651).
 CRS_EPSG = int(os.environ.get("CRS_EPSG", "32651"))
