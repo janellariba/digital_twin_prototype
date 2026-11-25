@@ -111,6 +111,12 @@ class Camera(Base):
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_status: Mapped[dict] = mapped_column(JSON, default=dict)  # latest heartbeat body
     last_detection_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set from the dashboard (SETUP), never by the camera node, so a node restart keeps them.
+    # watchtower_id: which tower this camera is mounted on (null = not linked, e.g. lab webcam).
+    watchtower_id: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    # Measured values only. Null means NOT MEASURED, and no bearing is computed without them.
+    heading_deg: Mapped[float | None] = mapped_column(Float, nullable=True)  # true north, clockwise
+    hfov_deg: Mapped[float | None] = mapped_column(Float, nullable=True)  # horizontal field of view
 
 
 class Detection(Base):
@@ -131,3 +137,15 @@ class Detection(Base):
     max_confidence: Mapped[float] = mapped_column(Float)
     boxes: Mapped[list] = mapped_column(JSON)
     snapshot_path: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+
+class ChangeLog(Base):
+    """Who changed what in SETUP, and when. Shown as the change history."""
+    __tablename__ = "change_log"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
+    entity: Mapped[str] = mapped_column(String(20))  # camera | watchtower
+    entity_id: Mapped[str] = mapped_column(String(16))
+    field: Mapped[str] = mapped_column(String(30))
+    old_value: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    new_value: Mapped[str | None] = mapped_column(String(60), nullable=True)

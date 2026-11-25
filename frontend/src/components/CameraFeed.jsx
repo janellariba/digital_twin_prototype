@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 const PREVIEW_REFRESH_MS = 500; // display only: how often the card asks for a new image
 
 const STATE_STYLE = {
-  ONLINE: "border-emerald-500 text-emerald-400",
+  ONLINE: "border-emerald-500 text-emerald-300",
   OFFLINE: "border-slate-500 text-slate-400",
   ERROR: "border-red-500 text-red-400",
 };
@@ -25,7 +25,7 @@ export default function CameraFeed({ cam }) {
   const badge = cam.detecting ? "border-red-500 bg-red-500/20 text-red-300 animate-pulse" : STATE_STYLE[cam.state];
 
   return (
-    <div className={`flex min-w-0 flex-col overflow-hidden rounded-lg border bg-panel ${cam.detecting ? "border-red-500" : "border-line"}`}>
+    <div className={`flex min-w-0 flex-col overflow-hidden rounded-xl border bg-panel2 ${cam.detecting ? "border-fire" : "border-line"}`}>
       <div className="flex items-center justify-between gap-2 px-3 py-1.5">
         <div className="min-w-0 truncate text-sm">
           <span className="font-semibold">{cam.id}</span> <span className="text-muted">{cam.label}</span>

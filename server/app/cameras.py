@@ -9,6 +9,8 @@ Node -> server (need the X-Node-Key header):
 Dashboard -> server:
     GET  /api/cameras                     all cameras with ONLINE / OFFLINE / ERROR status
     GET  /api/cameras/{id}/frame.jpg      latest preview image
+    PATCH /api/cameras/{id}              SETUP: link to a watchtower, measured heading / FOV
+    GET  /api/changes                     SETUP change history
     GET  /api/detections                  recent detections
     GET  /api/detections/{id}/snapshot.jpg
 """
@@ -31,7 +33,7 @@ from sqlalchemy.orm import Session
 
 from . import db as dbmod
 from . import settings
-from .models import Camera, Detection
+from .models import Camera, ChangeLog, Detection, Watchtower
 
 log = logging.getLogger("aisunog.cameras")
 router = APIRouter()
@@ -234,6 +236,11 @@ def camera_dict(cam: Camera, mon: dict) -> dict:
         "frame_width": hb.get("frame_width"), "frame_height": hb.get("frame_height"),
         "last_detection_at": last_det.isoformat() if last_det else None,
         "frame_age_s": round(time.time() - frame[1], 1) if frame else None,
+        "watchtower_id": cam.watchtower_id,
+        "heading_deg": cam.heading_deg,
+        "hfov_deg": cam.hfov_deg,
+        # A bearing can only be computed once both are measured.
+        "bearing_ready": cam.heading_deg is not None and cam.hfov_deg is not None,
     }
 
 
@@ -291,3 +298,46 @@ def get_snapshot(det_id: int, db: Session = Depends(dbmod.get_db)):
     if settings.STORAGE_DIR.resolve() not in path.parents or not path.exists():
         raise HTTPException(404, "Snapshot file missing")
     return FileResponse(path, media_type="image/jpeg")
+
+
+# ---------- SETUP: link a camera to a watchtower, store measured heading / FOV ----------
+class CameraUpdate(BaseModel):
+    """Only the fields sent are changed. null clears a value (back to NOT MEASURED / not linked)."""
+    watchtower_id: str | None = Field(default=None, pattern=ID_PATTERN)
+    heading_deg: float | None = Field(default=None, ge=0, lt=360)
+    hfov_deg: float | None = Field(default=None, gt=0, le=180)
+
+
+def _fmt(v):
+    return None if v is None else str(v)[:60]
+
+
+@router.patch("/api/cameras/{camera_id}")
+def update_camera(camera_id: str, body: CameraUpdate, db: Session = Depends(dbmod.get_db)):
+    cam = db.get(Camera, camera_id)
+    if not cam:
+        raise HTTPException(404, f"Unknown camera: {camera_id}")
+    changes = body.model_dump(include=body.model_fields_set)
+    if "watchtower_id" in changes and changes["watchtower_id"] is not None:
+        if not db.get(Watchtower, changes["watchtower_id"]):
+            raise HTTPException(422, f"Unknown watchtower: {changes['watchtower_id']}")
+    for field, new in changes.items():
+        old = getattr(cam, field)
+        if old == new:
+            continue
+        setattr(cam, field, new)
+        db.add(ChangeLog(entity="camera", entity_id=cam.id, field=field, old_value=_fmt(old), new_value=_fmt(new)))
+        log.info("Camera %s: %s %s -> %s", cam.id, field, old, new)
+    db.commit()
+    return camera_dict(cam, monitoring_config())
+
+
+@router.get("/api/changes")
+def list_changes(limit: int = 20, db: Session = Depends(dbmod.get_db)):
+    limit = max(1, min(limit, 200))
+    rows = db.scalars(select(ChangeLog).order_by(ChangeLog.id.desc()).limit(limit))
+    return [
+        {"id": r.id, "at": _aware(r.at).isoformat(), "entity": r.entity, "entity_id": r.entity_id,
+         "field": r.field, "old": r.old_value, "new": r.new_value}
+        for r in rows
+    ]

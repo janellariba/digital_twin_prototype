@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../services/api.js";
 
 const btn = "rounded-md border border-line bg-[#18262b] px-3 py-1.5 text-sm hover:border-accent disabled:opacity-40";
-const btnPrimary = "rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-[#1b1206] disabled:opacity-40";
+const btnPrimary = "rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40";
 const input = "w-full rounded-md border border-line bg-bg px-2 py-1.5 font-mono text-sm";
 const fmt = (x, d = 1) => (x === null || x === undefined ? "-" : Number(x).toFixed(d));
 

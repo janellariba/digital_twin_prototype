@@ -254,6 +254,58 @@ On the dashboard: each camera shows **ONLINE**, **OFFLINE** (no heartbeat for 6 
 
 `server/tests/test_cameras.py` (needs `TEST_DATABASE_URL`): node key required, ONLINE/ERROR status, detection saved once even if resent, simulated events refused on the camera endpoint, bad images refused.
 
+## Step 4 UI: watchtower-first dashboard
+
+The dashboard now has four views in the top bar. The twin stays loaded behind them.
+
+| View | What it is for |
+|---|---|
+| LIVE | Watchtowers with their cameras (left), the twin and the camera you clicked (centre), recent detections (right) |
+| SIMULATION | Simulated fires and triangulation on the twin |
+| LAB | The lab webcams and what still has to be measured for Step 3B |
+| SETUP | Link each camera to a watchtower, enter measured heading and field of view, change history |
+
+Each view has its own address, for example `http://localhost:5173/#setup`.
+
+### Linking cameras to watchtowers
+
+1. Start the server, the dashboard and your camera nodes as in Step 3A.
+2. Open **SETUP**. Each camera that has registered is listed, first under "Cameras not linked to a tower".
+3. Pick a watchtower for the camera and click **Save**. The camera moves under that tower, the tower pin on the
+   twin changes colour, and the change is logged in the change history.
+4. Leave **Heading** and **Field of view** empty until they are measured. Empty means NOT MEASURED, and no bearing
+   line is drawn for that camera.
+
+Tower pin colours come from the linked cameras: red = a camera is detecting, green = online, grey = all
+offline, amber dashed = no camera linked.
+
+Linking a lab webcam to a city tower is only for testing the dashboard. Its footage is still your room.
+
+### Database upgrade
+
+No action needed. On start the server adds the new columns (`watchtower_id`, `heading_deg`, `hfov_deg`) to your
+existing `cameras` table and creates the `change_log` table. Your existing data stays.
+
+### Rebuild the twin
+
+The bridge changed (new tower pins, hidden twin menu, layer control). After pulling, run once:
+
+```powershell
+cd frontend
+npm run build:twin
+```
+
+### Tests
+
+```powershell
+cd server
+$env:TEST_DATABASE_URL = "postgresql+psycopg://USER:PASS@127.0.0.1:5432/aisunog_test"
+python -m pytest -q
+```
+
+`tests/test_setup_link.py` covers linking, unlinking, measured values, rejected values, the change log and the
+in-place database upgrade.
+
 ## Next: Step 3B (lab triangulation)
 
 Measure the webcam positions and directions in the room, convert each detection's position in the image into a bearing, and triangulate the fire screen's position.

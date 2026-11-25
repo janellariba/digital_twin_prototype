@@ -85,12 +85,16 @@
   // calculation. Tower positions always come from the dashboard's config.
   // -------------------------------------------------------------------------
   const STYLE = {
+    // Tower data source changes only the label badge and opacity.
     tower: {
-      REAL: { head: 0x22d3ee, mast: 0xe8f4f6, ring: 0x22d3ee, opacity: 1 },
-      SYNTHETIC: { head: 0xf0abfc, mast: 0xe2e8f0, ring: 0xf0abfc, opacity: 0.9 },
+      REAL: { mast: 0xe2e8f0, opacity: 1 },
+      SYNTHETIC: { mast: 0xe2e8f0, opacity: 0.8 },
     },
+    // Tower status colours (ring + pin). Status comes from the dashboard, which
+    // derives it from the cameras linked to each tower.
+    towerState: { online: 0x34d399, detecting: 0xf43f5e, offline: 0x94a3b8, nolink: 0xf59e0b },
     pick: 0xffffff,
-    mastH: 45, mastR: 3, headH: 10, headR: 12, ringIn: 14, ringOut: 20,
+    mastH: 40, mastR: 1.6, headH: 10, headR: 12, ringIn: 14, ringOut: 20,
     labelLift: 14,
     // Markers grow when zoomed out so they stay visible at city scale.
     zoomRef: 1200, zoomMin: 1, zoomMax: 10,
@@ -107,7 +111,21 @@
 .aisunog-tw i{display:inline-block;margin-top:3px;font:600 9.5px/1 var(--mono);font-style:normal;letter-spacing:.06em;padding:2px 6px;border-radius:99px;border:1px solid currentColor;text-shadow:none;background:rgba(13,20,23,.85)}
 .aisunog-tw.real i{color:#22d3ee}.aisunog-tw.synthetic i{color:#f0abfc}.aisunog-tw.pick i{color:#fff}
 .aisunog-tw.simfire i{color:#ff7a50}.aisunog-tw.estimate i{color:#facc15}
-.aisunog-tw.sel b{color:#22d3ee;text-decoration:underline;text-underline-offset:3px}`;
+.aisunog-tw.sel b{color:#60a5fa}
+.aisunog-tw .pin{display:block;width:34px;height:42px;margin:3px auto 0;--c:#94a3b8;transition:transform .15s}
+.aisunog-tw.sel .pin{transform:scale(1.22);transform-origin:50% 100%}
+.aisunog-tw.st-online .pin{--c:#34d399}.aisunog-tw.st-detecting .pin{--c:#f43f5e}
+.aisunog-tw.st-offline .pin{--c:#94a3b8}.aisunog-tw.st-nolink .pin{--c:#f59e0b}
+.aisunog-tw .pin .o{stroke:var(--c)}.aisunog-tw .pin .f{fill:var(--c)}
+.aisunog-tw .pin .halo,.aisunog-tw .pin .arcs{display:none}
+.aisunog-tw.st-detecting .pin .halo{display:block;animation:aisunog-pulse 1.4s ease-out infinite;transform-origin:24px 22px}
+.aisunog-tw.st-detecting .pin .arcs{display:block}
+.aisunog-tw.st-nolink .pin .o{stroke-dasharray:4 3}
+.aisunog-tw.st-offline .pin .g{stroke:#cbd5e1}.aisunog-tw.st-offline .pin .gf{fill:#cbd5e1}
+@keyframes aisunog-pulse{0%{opacity:.55;transform:scale(.8)}100%{opacity:0;transform:scale(1.35)}}`;
+  // Embedded in the dashboard: hide the twin's own side menu. The dashboard
+  // has its own layer controls (layers.set). Standalone use is unchanged.
+  if (EMBEDDED) css.textContent += "\n.rail{display:none!important}";
   document.head.appendChild(css);
 
   // Bridge layer: everything the bridge draws lives here, separate from the
@@ -136,9 +154,25 @@
     return m;
   }
 
-  // A marker = ground ring (exact spot) + optional mast and hexagonal head + HTML label.
+  // Watchtower pin icon. Static markup written here (no config text), so
+  // innerHTML is safe; the camera count is set with textContent.
+  const PIN_SVG =
+    '<svg class="pin" viewBox="0 0 48 60" aria-hidden="true">' +
+    '<circle class="halo f" cx="24" cy="22" r="22" fill-opacity=".35"/>' +
+    '<path class="o" d="M24 58.5C24 58.5 4.5 37.5 4.5 22.5a19.5 19.5 0 0 1 39 0C43.5 37.5 24 58.5 24 58.5Z" fill="#0e151d" stroke-width="2.6"/>' +
+    '<circle class="f" cx="24" cy="22.5" r="14.5" fill-opacity=".18"/>' +
+    '<g class="g" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M18.6 33.5L22 16.5M29.4 33.5L26 16.5"/><path d="M19.4 29.5h9.2M20.3 25h7.4M21.1 20.8h5.8"/>' +
+    '<path d="M19.4 29.5L27.7 25M28.6 29.5L20.3 25M20.3 25L26.9 20.8M27.7 25L21.1 20.8"/><path d="M24 12.2V8.6"/></g>' +
+    '<rect class="gf" x="20.3" y="12.2" width="7.4" height="4.6" rx="1.3" fill="#fff"/>' +
+    '<path class="arcs o" d="M15.5 8.5a11 11 0 0 1 3.5-4.2M32.5 8.5a11 11 0 0 0-3.5-4.2" fill="none" stroke-width="1.8" stroke-linecap="round"/>' +
+    '<circle class="f" cx="40" cy="8" r="7.2" stroke="#0e151d" stroke-width="2"/>' +
+    '<text class="n" x="40" y="11.2" font-size="9.5" font-weight="800" text-anchor="middle" fill="#0b0f14" font-family="system-ui,sans-serif"></text>' +
+    "</svg>";
+
+  // A marker = ground ring (exact spot) + optional mast + HTML label (and pin icon for towers).
   const markers = new Set();
-  function makeMarker({ e, n, color, mastColor, opacity, title, sub, badge, cls, withMast }) {
+  function makeMarker({ e, n, color, mastColor, opacity, title, sub, badge, cls, withMast, pin }) {
     const group = new mn();
     const ground = Fi(e, n);
     group.position.set(...rn(e, n, ground));
@@ -148,10 +182,14 @@
       const mat = (c) => new xn({ color: c, transparent: opacity < 1, opacity });
       const mast = new pe(new Sr(STYLE.mastR, STYLE.mastR, STYLE.mastH, 8), mat(mastColor));
       mast.position.y = STYLE.mastH / 2;
-      const head = new pe(new Sr(STYLE.headR, STYLE.headR, STYLE.headH, 6), mat(color));
-      head.position.y = STYLE.mastH + STYLE.headH / 2;
-      group.add(mast, head);
-      top = STYLE.mastH + STYLE.headH;
+      group.add(mast);
+      top = STYLE.mastH;
+      if (!pin) {
+        const head = new pe(new Sr(STYLE.headR, STYLE.headR, STYLE.headH, 6), mat(color));
+        head.position.y = STYLE.mastH + STYLE.headH / 2;
+        group.add(head);
+        top += STYLE.headH;
+      }
     }
     // Label built with textContent only (never innerHTML) so config text cannot inject HTML.
     const el = document.createElement("div");
@@ -159,8 +197,15 @@
     const b = document.createElement("b"); b.textContent = title; el.appendChild(b);
     if (sub) { const s = document.createElement("span"); s.textContent = sub; el.appendChild(s); }
     if (badge) { const i = document.createElement("i"); i.textContent = badge; el.appendChild(i); }
+    let count = null;
+    if (pin) {
+      const w = document.createElement("div");
+      w.innerHTML = PIN_SVG;
+      el.appendChild(w.firstChild);
+      count = el.querySelector("text.n");
+    }
     document.body.appendChild(el);
-    const mk = { group, el, top, e, n };
+    const mk = { group, el, top, e, n, count };
     markers.add(mk);
     return mk;
   }
@@ -219,16 +264,44 @@
       const e = E - eh, n = N - nh;
       if (!inExtent(e, n)) { rejected.push({ id, reason: "outside the digital twin extent" }); continue; }
       const mk = makeMarker({
-        e, n, color: st.head, mastColor: st.mast, opacity: st.opacity,
+        e, n, color: STYLE.towerState.offline, mastColor: st.mast, opacity: st.opacity,
         title: id, sub: typeof t.name === "string" ? t.name.slice(0, 60) : "",
-        badge: t.source, cls: t.source.toLowerCase(), withMast: true,
+        badge: t.source === "REAL" ? "" : t.source, cls: t.source.toLowerCase(), withMast: true, pin: true,
       });
       mk.group.traverse((o) => { o.userData.towerId = id; });
       towerLayer.add(mk.group);
       towers.set(id, mk);
+      applyStatus(id);
     }
     return { drawn: towers.size, pending, rejected };
   }
+  // Status per tower, kept so it survives watchtowers.set reloads.
+  const STATES = Object.keys(STYLE.towerState);
+  const statusById = new Map(); // id -> { state, cameras }
+  function applyStatus(id) {
+    const mk = towers.get(id);
+    if (!mk) return;
+    const st = statusById.get(id) || { state: "offline", cameras: null };
+    for (const s of STATES) mk.el.classList.toggle("st-" + s, s === st.state);
+    mk.group.children[0].material.color.setHex(STYLE.towerState[st.state]);
+    if (mk.count) mk.count.textContent = st.cameras == null ? "" : st.cameras > 0 ? String(st.cameras) : "!";
+  }
+  function setStatus(map) {
+    if (!map || typeof map !== "object" || Array.isArray(map)) throw new Error("payload.towers must be an object of id -> status");
+    const rejected = [];
+    let applied = 0;
+    for (const [id, v] of Object.entries(map).slice(0, 50)) {
+      if (!ID_RE.test(id)) { rejected.push({ id: id.slice(0, 16), reason: "invalid id" }); continue; }
+      const state = v && typeof v.state === "string" ? v.state : "";
+      if (!STATES.includes(state)) { rejected.push({ id, reason: "state must be " + STATES.join(", ") }); continue; }
+      const cams = Number.isInteger(v.cameras) && v.cameras >= 0 && v.cameras < 100 ? v.cameras : null;
+      statusById.set(id, { state, cameras: cams });
+      applyStatus(id);
+      applied++;
+    }
+    return { applied, rejected };
+  }
+
   function selectTower(id) {
     const prev = selectedId && towers.get(selectedId);
     if (prev) { prev.el.classList.remove("sel"); prev.group.children[0].scale.setScalar(1); }
@@ -415,6 +488,21 @@
     },
     "simulation.clear": (p, id) => { clearSimulation(); send("simulation.cleared", {}, id); },
     "watchtowers.set": (p, id) => send("watchtowers.applied", setTowers(p.towers), id),
+    "watchtowers.status": (p, id) => send("watchtowers.status.applied", setStatus(p.towers), id),
+    "layers.set": (p, id) => {
+      const MAP = { terrain: "lT", buildings: "lB", roads: "lR", sidewalks: "lS", boundaries: "lG" };
+      const done = {};
+      for (const [k, elId] of Object.entries(MAP)) {
+        if (typeof p[k] !== "boolean") continue;
+        const box = document.getElementById(elId);
+        if (!box || box.checked === p[k]) { done[k] = p[k]; continue; }
+        box.checked = p[k];
+        box.dispatchEvent(new Event("change")); // the twin's own toggle handler
+        done[k] = p[k];
+      }
+      send("layers.applied", done, id);
+    },
+    "view.overview": (p, id) => { document.getElementById("overview")?.click(); send("view.flying", { overview: true }, id); },
     "watchtowers.visible": (p, id) => {
       towerLayer.visible = p.visible !== false;
       send("watchtowers.visibility", { visible: towerLayer.visible }, id);
