@@ -6,7 +6,7 @@ import DigitalTwin from "./components/DigitalTwin.jsx";
 import TopBar, { TABS } from "./components/TopBar.jsx";
 import TwinToolbar, { TwinLegend } from "./components/TwinToolbar.jsx";
 import TowerList from "./components/TowerList.jsx";
-import CameraViewer, { CameraStrip } from "./components/CameraViewer.jsx";
+import CameraViewer from "./components/CameraViewer.jsx";
 import DetectionPanel from "./components/DetectionPanel.jsx";
 import SimulationPanel from "./components/SimulationPanel.jsx";
 import MapTools from "./components/MapTools.jsx";
@@ -57,6 +57,7 @@ export default function App() {
   const [towersVisible, setTowersVisible] = useState(true);
   const [layers, setLayers] = useState(ALL_LAYERS);
   const [selectedCamId, setSelectedCamId] = useState(null);
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   // Cameras: polled, plus an immediate refresh after a SETUP change.
   const [camNonce, setCamNonce] = useState(0);
@@ -66,7 +67,6 @@ export default function App() {
 
   const towersById = useMemo(() => new Map(towers.map((t) => [t.id, t])), [towers]);
   const groups = useMemo(() => groupCameras(towers, cameras), [towers, cameras]);
-  const camsSorted = useMemo(() => [...cameras].sort(byUrgency), [cameras]);
   const online = cameras.filter((c) => c.state === "ONLINE").length;
   const detectingCams = cameras.filter((c) => c.detecting);
 
@@ -104,17 +104,17 @@ export default function App() {
   }, [ready, towers, groups, send]);
   useEffect(() => { if (!ready) lastStatus.current = ""; }, [ready]);
 
-  // Default selection: the most urgent camera, until the user picks one.
+  // Forget the selection if that camera is removed.
   useEffect(() => {
-    if (!cameras.length) return;
-    if (!selectedCamId || !cameras.some((c) => c.id === selectedCamId)) setSelectedCamId(camsSorted[0].id);
-  }, [cameras, camsSorted, selectedCamId]);
+    if (selectedCamId && cameras.length && !cameras.some((c) => c.id === selectedCamId)) setSelectedCamId(null);
+  }, [cameras, selectedCamId]);
 
   const selectedCam = cameras.find((c) => c.id === selectedCamId) ?? null;
   const selectedTower = selectedCam ? towersById.get(selectedCam.watchtower_id) ?? null : null;
 
   const selectCamera = useCallback((id) => {
     setSelectedCamId(id);
+    if (!id) return;
     setTab("LIVE");
     const cam = cameras.find((c) => c.id === id);
     const t = cam && towersById.get(cam.watchtower_id);
@@ -144,7 +144,7 @@ export default function App() {
           <span className="rounded-md border border-[#1f6b62] px-1.5 py-0.5 text-[#5eead4]">AI</span>
         </div>
       </div>
-      <div className="relative h-[52vh] min-h-[380px]">
+      <div className="relative h-[calc(100vh-150px)] min-h-[460px]">
         <DigitalTwin iframeRef={iframeRef} ready={ready} />
         <TwinToolbar
           layers={layers}
@@ -169,7 +169,7 @@ export default function App() {
           <span>
             Detected by {detectingCams.map((c) => `${c.id}${c.watchtower_id ? ` (${c.watchtower_id})` : ""}`).join(", ")}
           </span>
-          <button type="button" className="btn-primary ml-auto" onClick={() => selectCamera(detectingCams[0].id)}>View footage</button>
+          <button type="button" className="btn-primary ml-auto" onClick={() => { selectCamera(detectingCams[0].id); setViewerOpen(true); }}>View footage</button>
         </div>
       )}
       {cameraError && (
@@ -178,19 +178,17 @@ export default function App() {
 
       <main className="flex flex-1 flex-wrap gap-3.5 p-5 pt-3">
         {tab === "LIVE" && (
-          <aside className="flex min-w-0 flex-[1_1_320px] flex-col gap-3 lg:max-w-[380px]">
+          <aside className="flex min-w-0 flex-[1_1_300px] flex-col gap-3 lg:max-w-[340px]">
             <TowerList towers={towers} groups={groups} selectedCamId={selectedCamId} selectedTowerId={selectedTower?.id}
-              onSelectCamera={selectCamera} onFlyTo={flyToTower} />
+              onSelectCamera={selectCamera} onFlyTo={flyToTower} onLarge={() => setViewerOpen(true)} />
           </aside>
         )}
 
         <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-3.5">
           {twin}
-          {tab === "LIVE" && (
-            <>
-              <CameraViewer cam={selectedCam} tower={selectedTower} detections={detections} onShowOnTwin={flyToTower} />
-              <CameraStrip cameras={camsSorted} towersById={towersById} selectedCamId={selectedCamId} onSelect={selectCamera} />
-            </>
+          {viewerOpen && selectedCam && (
+            <CameraViewer cam={selectedCam} tower={selectedTower} detections={detections}
+              onShowOnTwin={flyToTower} onClose={() => setViewerOpen(false)} />
           )}
           {tab === "LAB" && <LabView cameras={cameras} />}
           {tab === "SETUP" && (
@@ -200,8 +198,9 @@ export default function App() {
         </div>
 
         {tab === "LIVE" && (
-          <aside className="flex min-w-0 flex-[1_1_300px] flex-col gap-3 lg:max-w-[360px]">
-            <DetectionPanel detections={detections} error={detectionError} cameraTower={cameraTower} onSelectCamera={selectCamera} />
+          <aside className="flex min-w-0 flex-[1_1_260px] flex-col gap-3 lg:max-w-[300px]">
+            <DetectionPanel detections={detections} error={detectionError} cameraTower={cameraTower}
+              onSelectCamera={(id) => { selectCamera(id); setViewerOpen(true); }} />
             <section className="card text-[13px] text-muted">
               <h2 className="h-label mb-1.5">Incidents</h2>
               Grouping detections from several towers into one incident with a location comes with the incident engine.

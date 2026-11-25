@@ -1,7 +1,7 @@
 // Small live preview: polls the camera's latest JPEG. Shows a placeholder when offline.
 import { useEffect, useState } from "react";
 
-export default function LiveThumb({ cam, refreshMs = 1000, className = "" }) {
+export default function LiveThumb({ cam, refreshMs = 1000, className = "", fit = "cover", alt = "" }) {
   const [tick, setTick] = useState(0);
   const [ok, setOk] = useState(false);
   const live = cam.state !== "OFFLINE";
@@ -13,8 +13,8 @@ export default function LiveThumb({ cam, refreshMs = 1000, className = "" }) {
   return (
     <div className={`relative overflow-hidden rounded-md bg-black ${className}`}>
       {live && (
-        <img src={`/api/cameras/${encodeURIComponent(cam.id)}/frame.jpg?t=${tick}`} alt=""
-          className={`h-full w-full object-cover ${ok ? "" : "invisible"}`}
+        <img src={`/api/cameras/${encodeURIComponent(cam.id)}/frame.jpg?t=${tick}`} alt={alt}
+          className={`h-full w-full ${fit === "contain" ? "object-contain" : "object-cover"} ${ok ? "" : "invisible"}`}
           onLoad={() => setOk(true)} onError={() => setOk(false)} />
       )}
       {(!live || !ok) && (

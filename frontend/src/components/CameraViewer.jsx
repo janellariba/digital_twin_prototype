@@ -19,7 +19,7 @@ function Fact({ k, children }) {
 }
 const NotMeasured = () => <StateBadge state="nolink">NOT MEASURED</StateBadge>;
 
-export default function CameraViewer({ cam, tower, detections, onShowOnTwin }) {
+export default function CameraViewer({ cam, tower, detections, onShowOnTwin, onClose }) {
   const [mode, setMode] = useState("live");
   const [tick, setTick] = useState(0);
   const [ok, setOk] = useState(false);
@@ -30,6 +30,11 @@ export default function CameraViewer({ cam, tower, detections, onShowOnTwin }) {
   const last = mine[0];
 
   useEffect(() => { setOk(false); }, [cam?.id]);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   useEffect(() => {
     if (!live || mode !== "live") return;
     const t = setInterval(() => setTick((n) => n + 1), LIVE_REFRESH_MS);
@@ -45,7 +50,9 @@ export default function CameraViewer({ cam, tower, detections, onShowOnTwin }) {
   }
 
   return (
-    <section className="card">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+    <section role="dialog" aria-modal="true" aria-label={`${cam.id} camera view`} onClick={(e) => e.stopPropagation()}
+      className="card max-h-[94vh] w-full max-w-5xl overflow-y-auto shadow-2xl">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2.5">
           <h2 className="h-label">Camera view</h2>
@@ -60,6 +67,7 @@ export default function CameraViewer({ cam, tower, detections, onShowOnTwin }) {
               {l}
             </button>
           ))}
+          <button type="button" aria-label="Close" onClick={onClose} className="ml-1 min-h-8 rounded-md px-2.5 text-lg leading-none text-muted hover:bg-[#1e2a3b] hover:text-white">×</button>
         </div>
       </div>
 
@@ -115,7 +123,7 @@ export default function CameraViewer({ cam, tower, detections, onShowOnTwin }) {
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" className="btn-primary" disabled={!tower || tower.source === "PENDING"} onClick={() => onShowOnTwin(tower.id)}>
+        <button type="button" className="btn-primary" disabled={!tower || tower.source === "PENDING"} onClick={() => { onShowOnTwin(tower.id); onClose?.(); }}>
           Show on twin
         </button>
         <button type="button" className="btn" disabled={!live} onClick={() => boxRef.current?.requestFullscreen?.()}>Full screen</button>
@@ -124,6 +132,7 @@ export default function CameraViewer({ cam, tower, detections, onShowOnTwin }) {
         )}
       </div>
     </section>
+    </div>
   );
 }
 
